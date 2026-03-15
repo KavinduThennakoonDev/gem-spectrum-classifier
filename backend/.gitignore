@@ -1,0 +1,9 @@
+cat > backend/.gitignore << EOF
+__pycache__/
+*.pyc
+*.pt
+*.pth
+venv/
+.env
+gem_classifier_bundle.pt
+EOF
