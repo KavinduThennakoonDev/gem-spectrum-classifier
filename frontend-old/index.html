@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GemScan — Spectrum Identifier</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
+<style>
+  /* ── Reset & Base ──────────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0b0d0f;
+    --surface:   #13161a;
+    --border:    #232830;
+    --gold:      #c9a84c;
+    --gold-dim:  #7a6025;
+    --blue:      #4a9eff;
+    --blue-dim:  #1a3a5e;
+    --text:      #e8e4dc;
+    --muted:     #666c78;
+    --danger:    #e05c5c;
+    --success:   #4fc87a;
+    --radius:    12px;
+    --font-disp: 'Playfair Display', serif;
+    --font-mono: 'DM Mono', monospace;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Background texture ────────────────────────────────────────── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse 80% 60% at 20% 10%, rgba(201,168,76,0.06) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 80% at 85% 80%, rgba(74,158,255,0.05) 0%, transparent 60%);
+    pointer-events: none; z-index: 0;
+  }
+
+  /* ── Layout ────────────────────────────────────────────────────── */
+  .wrap { max-width: 900px; margin: 0 auto; padding: 40px 24px; position: relative; z-index: 1; }
+
+  /* ── Header ────────────────────────────────────────────────────── */
+  header { text-align: center; margin-bottom: 48px; }
+  .logo-row { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 10px; }
+  .gem-icon { font-size: 2rem; filter: drop-shadow(0 0 14px rgba(201,168,76,0.6)); }
+  h1 {
+    font-family: var(--font-disp);
+    font-size: clamp(2rem, 5vw, 3rem);
+    font-weight: 900;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, var(--gold) 0%, #f0d080 50%, var(--gold) 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    font-size: 0.78rem; color: var(--muted); letter-spacing: 0.18em; text-transform: uppercase;
+    margin-top: 4px;
+  }
+
+  /* ── Status bar ────────────────────────────────────────────────── */
+  .status-bar {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    font-size: 0.72rem; color: var(--muted); margin-bottom: 36px;
+    letter-spacing: 0.06em;
+  }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--muted); transition: background 0.4s;
+  }
+  .dot.online  { background: var(--success); box-shadow: 0 0 8px var(--success); }
+  .dot.offline { background: var(--danger);  box-shadow: 0 0 8px var(--danger);  }
+
+  /* ── API URL bar ───────────────────────────────────────────────── */
+  .api-row {
+    display: flex; gap: 8px; margin-bottom: 32px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 10px 14px; align-items: center;
+  }
+  .api-label { font-size: 0.7rem; color: var(--gold); letter-spacing: 0.1em; white-space: nowrap; }
+  #apiUrl {
+    flex: 1; background: transparent; border: none; outline: none;
+    color: var(--text); font-family: var(--font-mono); font-size: 0.8rem;
+  }
+  .api-check-btn {
+    background: var(--gold-dim); color: var(--gold);
+    border: 1px solid var(--gold-dim); border-radius: 6px;
+    padding: 4px 12px; cursor: pointer; font-family: var(--font-mono);
+    font-size: 0.72rem; letter-spacing: 0.06em; transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .api-check-btn:hover { background: var(--gold); color: #000; }
+
+  /* ── Mode tabs ─────────────────────────────────────────────────── */
+  .tabs {
+    display: flex; gap: 0; margin-bottom: 28px;
+    border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
+  }
+  .tab {
+    flex: 1; padding: 13px; background: var(--surface); border: none;
+    color: var(--muted); font-family: var(--font-mono); font-size: 0.78rem;
+    letter-spacing: 0.08em; cursor: pointer; transition: all 0.2s;
+    text-transform: uppercase;
+  }
+  .tab + .tab { border-left: 1px solid var(--border); }
+  .tab.active {
+    background: var(--gold-dim); color: var(--gold);
+    font-weight: 500;
+  }
+  .tab:hover:not(.active) { background: #1a1e24; color: var(--text); }
+
+  /* ── Panels ────────────────────────────────────────────────────── */
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* ── Upload zone ───────────────────────────────────────────────── */
+  .drop-zone {
+    border: 2px dashed var(--border); border-radius: var(--radius);
+    padding: 48px 24px; text-align: center; cursor: pointer;
+    transition: all 0.25s; position: relative; background: var(--surface);
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--gold); background: rgba(201,168,76,0.04);
+  }
+  .drop-zone input[type=file] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .drop-icon { font-size: 2.5rem; margin-bottom: 12px; opacity: 0.6; }
+  .drop-text { font-size: 0.82rem; color: var(--muted); line-height: 1.6; }
+  .drop-text strong { color: var(--text); }
+
+  /* ── Preview image ─────────────────────────────────────────────── */
+  .preview-wrap {
+    margin-top: 20px; display: none; position: relative;
+    border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border);
+  }
+  .preview-wrap.show { display: block; }
+  #previewImg { width: 100%; max-height: 320px; object-fit: contain; background: #000; display: block; }
+  .preview-clear {
+    position: absolute; top: 10px; right: 10px;
+    background: rgba(0,0,0,0.7); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 4px 10px;
+    font-size: 0.72rem; cursor: pointer; font-family: var(--font-mono);
+    transition: all 0.2s;
+  }
+  .preview-clear:hover { background: var(--danger); border-color: var(--danger); }
+
+  /* ── Webcam panel ──────────────────────────────────────────────── */
+  .cam-wrap {
+    position: relative; border-radius: var(--radius); overflow: hidden;
+    border: 1px solid var(--border); background: #000;
+  }
+  #camVideo { width: 100%; max-height: 380px; object-fit: cover; display: block; }
+  #camCanvas { display: none; }
+  .cam-overlay {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.85); flex-direction: column; gap: 12px;
+  }
+  .cam-overlay p { font-size: 0.8rem; color: var(--muted); }
+
+  .cam-controls { display: flex; gap: 10px; margin-top: 16px; }
+
+  /* Scanning line animation */
+  .scan-line {
+    position: absolute; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    animation: scanDown 2s ease-in-out infinite;
+    pointer-events: none; opacity: 0;
+  }
+  .cam-wrap.scanning .scan-line { opacity: 1; }
+  @keyframes scanDown {
+    0%   { top: 0%;   opacity: 0; }
+    10%  { opacity: 1; }
+    90%  { opacity: 1; }
+    100% { top: 100%; opacity: 0; }
+  }
+
+  /* ── Buttons ───────────────────────────────────────────────────── */
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 28px; border-radius: var(--radius); border: none;
+    font-family: var(--font-mono); font-size: 0.78rem; letter-spacing: 0.1em;
+    text-transform: uppercase; cursor: pointer; transition: all 0.2s;
+    font-weight: 500;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--gold-dim), #5a4018);
+    color: var(--gold); border: 1px solid var(--gold-dim);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: linear-gradient(135deg, var(--gold), #d4a84c);
+    color: #000; border-color: var(--gold);
+    box-shadow: 0 0 20px rgba(201,168,76,0.25);
+  }
+  .btn-secondary {
+    background: var(--surface); color: var(--muted);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { color: var(--text); border-color: var(--muted); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-full { width: 100%; justify-content: center; margin-top: 16px; }
+
+  /* ── Spinner ───────────────────────────────────────────────────── */
+  .spinner {
+    width: 16px; height: 16px; border: 2px solid rgba(201,168,76,0.3);
+    border-top-color: var(--gold); border-radius: 50%;
+    animation: spin 0.7s linear infinite; display: none;
+  }
+  .spinner.show { display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Result card ───────────────────────────────────────────────── */
+  .result-wrap { margin-top: 28px; display: none; }
+  .result-wrap.show { display: block; animation: fadeUp 0.4s ease; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+
+  .result-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden;
+  }
+  .result-header {
+    padding: 20px 24px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .result-label { font-size: 0.68rem; color: var(--muted); letter-spacing: 0.15em; text-transform: uppercase; }
+  .result-class {
+    font-family: var(--font-disp); font-size: 1.5rem; font-weight: 700;
+    color: var(--gold); margin-top: 4px; letter-spacing: -0.01em;
+  }
+  .result-conf {
+    font-size: 2rem; font-weight: 500; color: var(--text);
+    font-family: var(--font-disp);
+  }
+  .result-conf span { font-size: 1rem; color: var(--muted); }
+
+  /* ── Score bars ────────────────────────────────────────────────── */
+  .scores { padding: 20px 24px; }
+  .score-label-row { font-size: 0.65rem; color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 14px; }
+  .score-item { margin-bottom: 14px; }
+  .score-item:last-child { margin-bottom: 0; }
+  .score-name-row {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 6px;
+  }
+  .score-name { font-size: 0.75rem; color: var(--text); }
+  .score-pct  { font-size: 0.75rem; color: var(--muted); font-weight: 500; }
+  .bar-track {
+    height: 6px; background: var(--border); border-radius: 3px; overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%; border-radius: 3px;
+    background: linear-gradient(90deg, var(--gold-dim), var(--gold));
+    transition: width 0.7s cubic-bezier(0.16,1,0.3,1);
+    width: 0%;
+  }
+  .bar-fill.secondary { background: linear-gradient(90deg, var(--blue-dim), var(--blue)); }
+
+  /* ── Error toast ───────────────────────────────────────────────── */
+  .toast {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(100px);
+    background: #2a1515; border: 1px solid var(--danger); color: var(--danger);
+    padding: 12px 24px; border-radius: var(--radius); font-size: 0.78rem;
+    transition: transform 0.3s ease; z-index: 999; max-width: 90vw; text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* ── Footer ────────────────────────────────────────────────────── */
+  footer {
+    margin-top: 60px; text-align: center;
+    font-size: 0.68rem; color: var(--muted); letter-spacing: 0.1em;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Header -->
+  <header>
+    <div class="logo-row">
+      <span class="gem-icon">💎</span>
+      <h1>GemScan</h1>
+    </div>
+    <p class="subtitle">Spectrum-based gem identification · EfficientNet-B0</p>
+  </header>
+
+  <!-- Status -->
+  <div class="status-bar">
+    <div class="dot" id="statusDot"></div>
+    <span id="statusText">Checking API...</span>
+  </div>
+
+  <!-- API URL -->
+  <div class="api-row">
+    <span class="api-label">API</span>
+    <input id="apiUrl" type="text" value="http://localhost:5000" placeholder="http://localhost:5000" />
+    <button class="api-check-btn" onclick="checkHealth()">Connect</button>
+  </div>
+
+  <!-- Mode tabs -->
+  <div class="tabs">
+    <button class="tab active" data-tab="upload" onclick="switchTab('upload', this)">Upload Image</button>
+    <button class="tab"        data-tab="camera" onclick="switchTab('camera', this)">Webcam Live</button>
+  </div>
+
+  <!-- Upload panel -->
+  <div class="panel active" id="panel-upload">
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" accept="image/*" onchange="onFileSelect(event)" />
+      <div class="drop-icon">📂</div>
+      <p class="drop-text">
+        <strong>Drop your spectrum image here</strong><br/>
+        or click to browse · PNG, JPG, BMP, TIFF
+      </p>
+    </div>
+
+    <div class="preview-wrap" id="previewWrap">
+      <img id="previewImg" alt="Preview" />
+      <button class="preview-clear" onclick="clearUpload()">✕ Clear</button>
+    </div>
+
+    <button class="btn btn-primary btn-full" id="analyzeBtn" onclick="analyzeUpload()" disabled>
+      <div class="spinner" id="uploadSpinner"></div>
+      <span id="analyzeBtnText">Analyze Spectrum</span>
+    </button>
+  </div>
+
+  <!-- Camera panel -->
+  <div class="panel" id="panel-camera">
+    <div class="cam-wrap" id="camWrap">
+      <video id="camVideo" autoplay playsinline muted></video>
+      <canvas id="camCanvas"></canvas>
+      <div class="scan-line"></div>
+      <div class="cam-overlay" id="camOverlay">
+        <span style="font-size:2rem">📷</span>
+        <p>Camera not started</p>
+      </div>
+    </div>
+    <div class="cam-controls">
+      <button class="btn btn-primary" id="startCamBtn" onclick="startCamera()">Start Camera</button>
+      <button class="btn btn-secondary" id="stopCamBtn" onclick="stopCamera()" style="display:none">Stop</button>
+      <button class="btn btn-primary" id="captureBtn" onclick="captureAndAnalyze()" disabled style="margin-left:auto">
+        <div class="spinner" id="camSpinner"></div>
+        <span id="captureBtnText">Capture &amp; Analyze</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div class="result-wrap" id="resultWrap">
+
+    <!-- Rejection card -->
+    <div class="result-card" id="rejectCard" style="display:none">
+      <div class="result-header" style="border-bottom:none">
+        <div style="display:flex;align-items:center;gap:14px">
+          <span style="font-size:2rem">⚠️</span>
+          <div>
+            <div class="result-label">Not Recognised</div>
+            <div class="result-class" style="color:var(--danger);font-size:1.1rem" id="rejectMsg">—</div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:0 24px 18px;font-size:0.75rem;color:var(--muted);line-height:1.7">
+        Please upload a <strong style="color:var(--text)">gem spectrum image</strong> — a wide, bright-band spectral photograph of a gemstone.
+        Random photos, solid colours, or non-spectrum images will be rejected.
+      </div>
+    </div>
+
+    <!-- Success card -->
+    <div class="result-card" id="successCard">
+      <div class="result-header">
+        <div>
+          <div class="result-label">Identified Gem</div>
+          <div class="result-class" id="resultClass">—</div>
+        </div>
+        <div>
+          <div class="result-label" style="text-align:right">Confidence</div>
+          <div class="result-conf" id="resultConf">—<span>%</span></div>
+        </div>
+      </div>
+      <div class="scores">
+        <div class="score-label-row">All Class Scores</div>
+        <div id="scoreBars"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>GemScan v2 &nbsp;·&nbsp; Spectrum Classifier &nbsp;·&nbsp; EfficientNet-B0</footer>
+</div>
+
+<!-- Error toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────
+let apiBase      = 'http://localhost:5000';
+let camStream    = null;
+let selectedFile = null;
+
+// ── Init ──────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  const stored = localStorage.getItem('gemApiUrl');
+  if (stored) { document.getElementById('apiUrl').value = stored; apiBase = stored; }
+  checkHealth();
+  setupDragDrop();
+});
+
+document.getElementById('apiUrl').addEventListener('change', e => {
+  apiBase = e.target.value.trim().replace(/\/$/, '');
+  localStorage.setItem('gemApiUrl', apiBase);
+});
+
+// ── Health check ──────────────────────────────────────────────────────────
+async function checkHealth() {
+  apiBase = document.getElementById('apiUrl').value.trim().replace(/\/$/, '');
+  localStorage.setItem('gemApiUrl', apiBase);
+  const dot  = document.getElementById('statusDot');
+  const txt  = document.getElementById('statusText');
+  dot.className = 'dot';
+  txt.textContent = 'Connecting...';
+  try {
+    const res  = await fetch(`${apiBase}/health`, { signal: AbortSignal.timeout(4000) });
+    const data = await res.json();
+    dot.className  = 'dot online';
+    txt.textContent = `API online · Model ${data.model_loaded ? 'loaded' : 'not loaded'} · ${data.device}`;
+  } catch {
+    dot.className  = 'dot offline';
+    txt.textContent = 'API offline — start your Flask server';
+  }
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(`panel-${name}`).classList.add('active');
+  hideResult();
+  if (name !== 'camera' && camStream) stopCamera();
+}
+
+// ── Drag & drop ───────────────────────────────────────────────────────────
+function setupDragDrop() {
+  const zone = document.getElementById('dropZone');
+  zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', ()=> zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f && f.type.startsWith('image/')) loadFile(f);
+  });
+}
+
+function onFileSelect(e) {
+  const f = e.target.files[0];
+  if (f) loadFile(f);
+}
+
+function loadFile(file) {
+  selectedFile = file;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    document.getElementById('previewImg').src = ev.target.result;
+    document.getElementById('previewWrap').classList.add('show');
+    document.getElementById('analyzeBtn').disabled = false;
+  };
+  reader.readAsDataURL(file);
+  hideResult();
+}
+
+function clearUpload() {
+  selectedFile = null;
+  document.getElementById('fileInput').value = '';
+  document.getElementById('previewWrap').classList.remove('show');
+  document.getElementById('analyzeBtn').disabled = true;
+  hideResult();
+}
+
+// ── Upload analyze ────────────────────────────────────────────────────────
+async function analyzeUpload() {
+  if (!selectedFile) return;
+  setLoading('upload', true);
+  try {
+    const form = new FormData();
+    form.append('image', selectedFile);
+    const res  = await fetch(`${apiBase}/predict/upload`, { method: 'POST', body: form });
+    const data = await res.json();
+    if (data.error) { showRejection(data.error); return; }
+    showResult(data);
+  } catch (e) {
+    showToast(e.message || 'Request failed — is the Flask server running?');
+  } finally {
+    setLoading('upload', false);
+  }
+}
+
+// ── Webcam ────────────────────────────────────────────────────────────────
+async function startCamera() {
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
+    const video = document.getElementById('camVideo');
+    video.srcObject = camStream;
+    document.getElementById('camOverlay').style.display = 'none';
+    document.getElementById('startCamBtn').style.display = 'none';
+    document.getElementById('stopCamBtn').style.display  = '';
+    document.getElementById('captureBtn').disabled = false;
+  } catch (e) {
+    showToast('Camera access denied: ' + e.message);
+  }
+}
+
+function stopCamera() {
+  if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; }
+  const video = document.getElementById('camVideo');
+  video.srcObject = null;
+  document.getElementById('camOverlay').style.display = '';
+  document.getElementById('startCamBtn').style.display = '';
+  document.getElementById('stopCamBtn').style.display  = 'none';
+  document.getElementById('captureBtn').disabled = true;
+}
+
+async function captureAndAnalyze() {
+  if (!camStream) return;
+  const video  = document.getElementById('camVideo');
+  const canvas = document.getElementById('camCanvas');
+  canvas.width  = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+
+  // Scan animation
+  document.getElementById('camWrap').classList.add('scanning');
+  setLoading('camera', true);
+
+  try {
+    const b64  = canvas.toDataURL('image/jpeg', 0.92);
+    const res  = await fetch(`${apiBase}/predict/base64`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: b64 })
+    });
+    const data = await res.json();
+    if (data.error) { showRejection(data.error); return; }
+    showResult(data);
+  } catch (e) {
+    showToast(e.message || 'Prediction failed');
+  } finally {
+    document.getElementById('camWrap').classList.remove('scanning');
+    setLoading('camera', false);
+  }
+}
+
+// ── Results ───────────────────────────────────────────────────────────────
+function showResult(data) {
+  document.getElementById('rejectCard').style.display  = 'none';
+  document.getElementById('successCard').style.display = '';
+
+  document.getElementById('resultClass').textContent = data.predicted_class;
+  document.getElementById('resultConf').innerHTML    = `${data.confidence.toFixed(1)}<span>%</span>`;
+
+  const barsEl = document.getElementById('scoreBars');
+  barsEl.innerHTML = '';
+  const sorted = Object.entries(data.all_scores).sort((a, b) => b[1] - a[1]);
+  sorted.forEach(([cls, pct]) => {
+    const isPrimary = cls === data.predicted_class;
+    barsEl.innerHTML += `
+      <div class="score-item">
+        <div class="score-name-row">
+          <span class="score-name">${cls}</span>
+          <span class="score-pct">${pct.toFixed(1)}%</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill ${isPrimary ? '' : 'secondary'}" style="width:0%"
+               data-target="${pct}"></div>
+        </div>
+      </div>`;
+  });
+
+  const wrap = document.getElementById('resultWrap');
+  wrap.classList.add('show');
+  requestAnimationFrame(() => {
+    document.querySelectorAll('.bar-fill').forEach(bar => {
+      bar.style.width = bar.dataset.target + '%';
+    });
+  });
+  wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function showRejection(message) {
+  document.getElementById('rejectCard').style.display  = '';
+  document.getElementById('successCard').style.display = 'none';
+  document.getElementById('rejectMsg').textContent = message;
+  const wrap = document.getElementById('resultWrap');
+  wrap.classList.add('show');
+  wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// ── Loading state ─────────────────────────────────────────────────────────
+function setLoading(mode, on) {
+  if (mode === 'upload') {
+    document.getElementById('uploadSpinner').classList.toggle('show', on);
+    document.getElementById('analyzeBtnText').textContent = on ? 'Analyzing...' : 'Analyze Spectrum';
+    document.getElementById('analyzeBtn').disabled = on;
+  } else {
+    document.getElementById('camSpinner').classList.toggle('show', on);
+    document.getElementById('captureBtnText').textContent = on ? 'Analyzing...' : 'Capture & Analyze';
+    document.getElementById('captureBtn').disabled = on;
+  }
+}
+
+function hideResult() {
+  document.getElementById('resultWrap').classList.remove('show');
+  document.getElementById('rejectCard').style.display  = 'none';
+  document.getElementById('successCard').style.display = '';
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3500);
+}
+</script>
+</body>
+</html>
